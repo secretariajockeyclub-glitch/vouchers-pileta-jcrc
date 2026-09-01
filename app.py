@@ -192,6 +192,11 @@ def member_match_key(payload):
 
 
 def parse_excel_members(file_storage):
+    """
+    Lee A:H de forma secuencial. Esto evita accesos celda-por-celda en
+    openpyxl read_only, que en plan Free de Render podían tardar más de
+    40 segundos y provocar Internal Server Error.
+    """
     raw = file_storage.read()
     if not raw:
         raise ValueError("El archivo está vacío.")
@@ -201,24 +206,35 @@ def parse_excel_members(file_storage):
         raise ValueError("No se pudo abrir el Excel. Usá un archivo .xlsx válido.") from e
 
     ws = wb[wb.sheetnames[0]]
-    header_row = None
-    for r in range(1, min(ws.max_row, 25) + 1):
-        c4 = clean_excel_text(ws.cell(r, 4).value).lower()
-        c7 = clean_excel_text(ws.cell(r, 7).value).lower()
+
+    # Leer A:H de una sola pasada es muchísimo más rápido que ws.cell(...)
+    all_rows = list(ws.iter_rows(min_col=1, max_col=8, values_only=True))
+
+    header_index = None
+    for i, vals in enumerate(all_rows[:25]):
+        c4 = clean_excel_text(vals[3] if len(vals) > 3 else "").lower()
+        c7 = clean_excel_text(vals[6] if len(vals) > 6 else "").lower()
         if ("apellido" in c4 or "nombre" in c4) and "invit" in c7:
-            header_row = r
+            header_index = i
             break
-    if header_row is None:
-        header_row = 4
+
+    if header_index is None:
+        header_index = 3  # fila 4, como respaldo
 
     rows = []
     seen = set()
-    for r in range(header_row + 1, ws.max_row + 1):
-        vals = [ws.cell(r, c).value for c in range(1, 9)]
+
+    for vals in all_rows[header_index + 1:]:
+        # iter_rows ya devuelve exactamente 8 columnas, pero lo dejamos robusto
+        vals = list(vals) + [None] * (8 - len(vals))
+
         nombre = clean_excel_text(vals[3])
         socio = clean_excel_text(vals[2])
+
+        # Ignorar filas vacías o sólo formateadas
         if not nombre and not socio:
             continue
+
         invitaciones = max(0, clean_excel_int(vals[6], 0))
         payload = {
             "excel_id": clean_excel_text(vals[0]),
@@ -230,14 +246,18 @@ def parse_excel_members(file_storage):
             "telefono_original": clean_excel_text(vals[7]),
             "telefono_wa": normalize_phone(vals[7]),
         }
+
         key = member_match_key(payload)
         if key in seen:
-            raise ValueError(f"Hay un Nº de socio duplicado en el Excel: {socio or nombre}")
+            raise ValueError(
+                f"Hay un Nº de socio duplicado en el Excel: {socio or nombre}"
+            )
         seen.add(key)
         rows.append((key, payload, invitaciones))
 
     if not rows:
         raise ValueError("No encontré titulares en las columnas A:H del Excel.")
+
     return rows
 
 
