@@ -302,9 +302,24 @@ def sync_excel_into_state(state, excel_rows):
                 int(m.get("invitaciones_iniciales", saldo))
             )
 
-            # Compatibilidad con el estado creado por la versión anterior:
-            # la primera vez no vuelve a acreditar lo que ya estaba cargado.
+            # Compatibilidad / migración desde versiones anteriores.
+            # Si todavía no existe excel_invitaciones_last:
+            # - saldo > 0: tomamos el valor actual como ya conocido, sin duplicar.
+            # - saldo == 0 y Excel > 0: lo interpretamos como una NUEVA COMPRA
+            #   pendiente y la acreditamos una sola vez.
             if "excel_invitaciones_last" not in m:
+                if saldo == 0 and excel_invitaciones > 0:
+                    saldo += excel_invitaciones
+                    total_cargadas += excel_invitaciones
+                    credited += 1
+                    credited_qty += excel_invitaciones
+                    state.setdefault("history", []).append({
+                        "at": now_iso(),
+                        "type": "excel_credit_migration",
+                        "member_id": mid,
+                        "qty": excel_invitaciones,
+                        "saldo": saldo,
+                    })
                 m["excel_invitaciones_last"] = excel_invitaciones
             else:
                 last_excel = max(0, int(m.get("excel_invitaciones_last", 0)))
@@ -517,7 +532,7 @@ def admin_home():
               <tr>
                 <td><b>{p.get('nombre','')}</b><br><span class="muted">Socio {p.get('socio','')}</span></td>
                 <td>{p.get('categoria','')}</td>
-                <td><b>{m.get('saldo',0)}</b> / {m.get('invitaciones_iniciales',0)}</td>
+                <td><b>{m.get('saldo',0)}</b></td>
                 <td>{phone_html}</td>
                 <td><a class="btn btn-orange" href="/v/{mid}">Abrir</a>
                     <a class="btn btn-gray" href="/qr/{mid}.png?download=1">QR</a>
@@ -533,7 +548,7 @@ def admin_home():
         </div>
         <div class="card">
           <h3>Actualizar desde Excel</h3>
-          <p class="muted">Elegí tu archivo <b>temporada 2026-27.xlsx</b>. Se actualizan todas las filas y campos A:H. La columna Invitaciones funciona como carga pendiente: ponerla en 0 no borra el saldo; una nueva cantidad después de 0 se suma al voucher.</p>
+          <p class="muted">Elegí tu archivo <b>temporada 2026-27.xlsx</b>. Se actualizan todas las filas y campos A:H. La columna Invitaciones funciona como carga pendiente: ponerla en 0 no borra el saldo; una nueva cantidad después de 0 se suma una sola vez al mismo voucher.</p>
           <form method="post" action="/admin/upload-excel" enctype="multipart/form-data">
             <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
               <div style="flex:1;min-width:260px"><label>Archivo Excel</label><input type="file" name="excel" accept=".xlsx,.xlsm" required></div>
