@@ -121,7 +121,7 @@
       "activo": true
     },
     "_-_CJQrznb9ybIUS": {
-      "payload": "gAAAAABqlw0Eac-vp2XC5Qd14LSY4ikwoWwT_BrxIg6aRMSqTA4nVpoTF8HiotvCYIKPXl-4JYVScHxi5cJ8yn_pn3e4Pq_eqfCSzCed4Um2iemnB6W2f2gKnYzvdPTYs84L5e7uKD0uyC2b10IhDz3wFGyQBl7cx46Z1qQKPcrsXAs2Wdb4BLqVjwyi6ceV8vlfmRpSBcLbGPjtLkzN7BeVGNRkVy86YErGjr5UCSazPLFy8soK-N7BDeD5EX0_EggSkK3ukWSuCoAbdLtwXELoFJBujtObTd-nXb7tsV8gbbRY8KC_Ba0v_oQqdzJ-E0iUc1FbW7Vzq0hb0cKn6CCB64zGN6Srte3n6NrepON86Qozr8JTfls=",
+      "payload": "gAAAAABqlw3Lr2DSme9Lx-w87ViTKOw4Y79t5NpZNGm2dixHFTTzyzS27RCLNhuUCz5BCbUeMPt5YIXaxOSJmqjLcbi5twg9ONnCiBYzP_uSQCDnoMlHQnFDcxjV-W2sJZfKAVrHBcBT7yOEc71W8v6H5K-g0RagqFNMie1b65nGF3wZKzusvn91mvUxUERTldUsGoZPm25P8HKiotPc8Sd4VjAPovuRYu4hi2_Nc5V8dUrPL_wLbQIL1limT8xJkYO2nIjsQ25qw8K30vktAMzpV-LgSwcAMElrTyB7y-1eEEgZrzvqqSn2N8tkEoAEJz_BJhrbJ0hlSHTlF8PGUDIZ-51olaMiwrSI-aDZLbyA3WXCuHLy6yk=",
       "saldo": 0,
       "invitaciones_iniciales": 10,
       "excel_invitaciones_last": 10,
@@ -237,6 +237,12 @@
       "credited_members": 0,
       "credited_qty": 0,
       "deactivated": 0
+    },
+    {
+      "at": "2026-09-01T17:39:23.815572+00:00",
+      "type": "admin_edit",
+      "member_id": "_-_CJQrznb9ybIUS",
+      "saldo": 0
     }
   ]
 }
