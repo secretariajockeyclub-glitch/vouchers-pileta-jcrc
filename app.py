@@ -6,6 +6,7 @@ import base64
 import secrets
 import threading
 import hashlib
+import hmac
 from datetime import datetime, timezone
 from functools import wraps
 from urllib.parse import quote
@@ -377,6 +378,24 @@ def public_base():
     return BASE_URL or request.url_root.rstrip("/")
 
 
+def voucher_share_signature(mid):
+    """Firma corta y estable para compartir el voucher sin exponer el panel."""
+    secret = DATA_KEY or app.secret_key
+    return hmac.new(
+        secret.encode("utf-8"),
+        mid.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:24]
+
+
+def voucher_share_url(mid):
+    return f"{public_base()}/voucher/{mid}/{voucher_share_signature(mid)}"
+
+
+def valid_voucher_signature(mid, sig):
+    return hmac.compare_digest(voucher_share_signature(mid), sig)
+
+
 def is_admin():
     return bool(session.get("admin"))
 
@@ -410,6 +429,13 @@ table{width:100%;border-collapse:collapse;background:white} th,td{padding:10px;b
 th{background:#171717;color:#fff;position:sticky;top:0}.ok{color:var(--green);font-weight:800}.bad{color:var(--red);font-weight:800}
 .notice{padding:12px;border-radius:9px;background:#fff3e9;border-left:5px solid var(--orange);margin:12px 0}
 .center{text-align:center}.status{font-size:38px;font-weight:900}.status.ok{color:var(--green)}
+.jcrc-panel{max-width:620px;margin:28px auto;background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 12px 35px rgba(0,0,0,.14);border:1px solid #eee}
+.jcrc-head{background:#171717;color:#fff;padding:24px 22px;text-align:center;border-bottom:8px solid var(--orange)}
+.jcrc-mark{width:72px;height:72px;border-radius:50%;background:var(--orange);color:#fff;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:23px;font-weight:900;border:5px solid #fff}
+.jcrc-body{padding:24px}.request-number{font-size:46px;font-weight:900;color:var(--orange);line-height:1}
+.info-box{background:#f7f7f7;border-radius:14px;padding:15px;margin:14px 0;text-align:left}
+.action-btn{width:100%;font-size:20px;padding:16px;border-radius:14px}
+.share-card{max-width:560px;margin:30px auto;text-align:center}.share-card img{width:min(300px,82vw);height:auto;border:10px solid #fff;box-shadow:0 5px 20px rgba(0,0,0,.12);border-radius:14px}
 @media(max-width:700px){table{font-size:13px}.hide-mobile{display:none}.big{font-size:28px}}
 """
 
@@ -494,7 +520,8 @@ def admin_home():
                 <td><b>{m.get('saldo',0)}</b> / {m.get('invitaciones_iniciales',0)}</td>
                 <td>{phone_html}</td>
                 <td><a class="btn btn-orange" href="/v/{mid}">Abrir</a>
-                    <a class="btn btn-gray" href="/qr/{mid}.png?download=1">QR</a></td>
+                    <a class="btn btn-gray" href="/qr/{mid}.png?download=1">QR</a>
+                    {f'<a class="btn btn-green" href="/admin/send-voucher/{mid}" target="_blank" rel="noopener">Enviar</a>' if phone else '<span class="muted">Sin tel.</span>'}</td>
               </tr>""")
         body = f"""
         <div class="card">
@@ -553,6 +580,86 @@ def upload_excel():
         return page("Excel actualizado", body)
     except Exception as e:
         return page("Error al actualizar", f'<div class="card"><h2>No pude actualizar el Excel</h2><p class="bad">{e}</p><a class="btn btn-gray" href="/admin">Volver</a></div>'), 400
+
+
+@app.get("/admin/send-voucher/<mid>")
+@admin_required
+def send_voucher(mid):
+    state, _ = load_state()
+    m = state.get("members", {}).get(mid)
+    if not m or not m.get("activo", True):
+        abort(404)
+    p = decrypt_member(m)
+    phone = p.get("telefono_wa") or ""
+    if not phone:
+        return page(
+            "Falta teléfono",
+            '<div class="card"><h2>Falta teléfono válido</h2><p>Actualizá el teléfono del titular y volvé a intentar.</p><a class="btn btn-gray" href="/admin">Volver</a></div>',
+        ), 400
+
+    share_url = voucher_share_url(mid)
+    saldo = int(m.get("saldo", 0))
+    msg = (
+        f"Hola {p.get('nombre','')}. 👋\n\n"
+        f"Jockey Club Río Cuarto te envía tu voucher de invitaciones "
+        f"para la temporada 2026/27.\n\n"
+        f"Saldo disponible: {saldo} invitación{'es' if saldo != 1 else ''}.\n\n"
+        f"Tu voucher / QR:\n{share_url}\n\n"
+        f"Podés conservar este enlace y compartir el QR con tu grupo."
+    )
+    return redirect(f"https://wa.me/{phone}?text={quote(msg)}")
+
+
+@app.get("/voucher/<mid>/<sig>")
+def public_voucher(mid, sig):
+    if not valid_voucher_signature(mid, sig):
+        abort(404)
+    state, _ = load_state()
+    m = state.get("members", {}).get(mid)
+    if not m or not m.get("activo", True):
+        abort(404)
+    p = decrypt_member(m)
+    saldo = int(m.get("saldo", 0))
+    body = f"""
+    <div class="jcrc-panel">
+      <div class="jcrc-head">
+        <div class="jcrc-mark">JCRC</div>
+        <h1 style="margin-bottom:4px">Voucher de invitaciones</h1>
+        <div>Temporada 2026/27</div>
+      </div>
+      <div class="jcrc-body center">
+        <div class="big">{p.get('nombre','')}</div>
+        <p class="muted">Socio Nº {p.get('socio','')}</p>
+        <img src="/voucher/{mid}/{sig}/qr.png" alt="QR del voucher"
+             style="width:min(300px,82vw);height:auto;margin:8px auto 18px;display:block">
+        <div class="saldo">Saldo disponible: {saldo}</div>
+        <p class="muted" style="margin-top:18px">
+          Presentá este QR en recepción. El ingreso queda sujeto a la autorización del titular.
+        </p>
+      </div>
+    </div>"""
+    return page("Voucher JCRC", body)
+
+
+@app.get("/voucher/<mid>/<sig>/qr.png")
+def public_voucher_qr(mid, sig):
+    if not valid_voucher_signature(mid, sig):
+        abort(404)
+    state, _ = load_state()
+    if mid not in state.get("members", {}):
+        abort(404)
+
+    # El QR abre la ficha de recepción; si el dispositivo no inició sesión,
+    # solicita el PIN de recepción antes de mostrarla.
+    url = f"{public_base()}/v/{mid}"
+    qr = qrcode.QRCode(version=None, box_size=9, border=3)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return send_file(buf, mimetype="image/png", download_name=f"voucher-{mid}.png")
 
 
 @app.route("/v/<mid>", methods=["GET"])
@@ -656,19 +763,21 @@ def create_request(mid):
     p, saldo = update_state(mutate)
     auth_url = f"{public_base()}/a/{token}"
     msg = (
-        f"Jockey Club Río Cuarto - Autorización de ingreso\n\n"
+        f"🟠 JOCKEY CLUB RÍO CUARTO\n"
+        f"Solicitud de autorización de ingreso\n\n"
         f"Titular: {p.get('nombre','')}\n"
         f"Nº socio: {p.get('socio','')}\n"
-        f"Se solicita autorizar el ingreso de {qty} persona{'s' if qty != 1 else ''}.\n\n"
-        f"Para AUTORIZAR o RECHAZAR, abrí este enlace:\n{auth_url}\n\n"
-        f"Esta solicitud vence en 30 minutos."
+        f"Personas que solicitan ingresar: {qty}\n"
+        f"Saldo disponible: {saldo}\n\n"
+        f"👉 Tocá acá para ACEPTAR o RECHAZAR:\n{auth_url}\n\n"
+        f"⏱️ La solicitud vence en 30 minutos."
     )
     wa_url = f"https://wa.me/{p['telefono_wa']}?text={quote(msg)}"
     body = f"""
     <div class="card center">
       <h1>Solicitud creada</h1>
       <p><b>{p.get('nombre','')}</b> · {qty} persona{'s' if qty != 1 else ''}</p>
-      <a class="btn btn-green" href="{wa_url}" target="_blank" rel="noopener">Abrir WhatsApp y enviar</a>
+      <a class="btn btn-green" href="{wa_url}" target="_blank" rel="noopener">ENVIAR SOLICITUD POR WHATSAPP</a>
       <p class="muted">Después de enviar, dejá esta pantalla abierta. Se actualizará sola.</p>
       <div id="st" class="status">ESPERANDO...</div>
       <p id="detail">Saldo actual: {saldo}</p>
@@ -716,26 +825,46 @@ def authorize_page(token):
         status = "expired"
 
     if status == "approved":
-        body = f'<div class="card center"><div class="status ok">AUTORIZADO</div><p>{req["qty"]} persona(s). Gracias.</p></div>'
+        body = f'<div class="jcrc-panel"><div class="jcrc-head"><div class="jcrc-mark">JCRC</div><h1>Autorización</h1></div><div class="jcrc-body center"><div class="status ok">✓ AUTORIZADO</div><p style="font-size:18px">{req["qty"]} persona(s).</p><p>Recepción ya recibió tu respuesta.</p></div></div>'
     elif status == "rejected":
-        body = '<div class="card center"><div class="status bad">RECHAZADO</div><p>La solicitud ya fue rechazada.</p></div>'
+        body = '<div class="jcrc-panel"><div class="jcrc-head"><div class="jcrc-mark">JCRC</div><h1>Autorización</h1></div><div class="jcrc-body center"><div class="status bad">✕ RECHAZADO</div><p style="font-size:18px">La solicitud fue rechazada.</p><p>Recepción ya recibió tu respuesta.</p></div></div>'
     elif status == "expired":
-        body = '<div class="card center"><div class="status bad">VENCIDO</div><p>Pedí a recepción una nueva solicitud.</p></div>'
+        body = '<div class="jcrc-panel"><div class="jcrc-head"><div class="jcrc-mark">JCRC</div><h1>Autorización</h1></div><div class="jcrc-body center"><div class="status bad">VENCIDO</div><p>Pedí a recepción una nueva solicitud.</p></div></div>'
     else:
         body = f"""
-        <div class="card center" style="max-width:560px;margin:35px auto">
-          <h2>Jockey Club Río Cuarto</h2>
-          <p>Hola <b>{p.get('nombre','')}</b>.</p>
-          <p>Recepción solicita autorizar el ingreso de:</p>
-          <div class="big">{req['qty']} persona{'s' if req['qty'] != 1 else ''}</div>
-          <p>Saldo actual: <b>{m.get('saldo',0)}</b></p>
-          <form method="post" action="/a/{token}/approve">
-            <button class="btn btn-green" style="width:100%;font-size:20px">AUTORIZAR INGRESO</button>
-          </form><br>
-          <form method="post" action="/a/{token}/reject">
-            <button class="btn btn-red" style="width:100%">RECHAZAR</button>
-          </form>
-          <p class="muted">La autorización se puede usar una sola vez.</p>
+        <div class="jcrc-panel">
+          <div class="jcrc-head">
+            <div class="jcrc-mark">JCRC</div>
+            <h1 style="margin-bottom:5px">Autorización de ingreso</h1>
+            <div>Jockey Club Río Cuarto</div>
+          </div>
+          <div class="jcrc-body center">
+            <p style="font-size:18px;margin-top:0">Hola <b>{p.get('nombre','')}</b></p>
+            <p>Recepción solicita tu autorización para el ingreso de:</p>
+            <div class="request-number">{req['qty']}</div>
+            <div style="font-size:18px;font-weight:800;margin-bottom:14px">
+              persona{'s' if req['qty'] != 1 else ''}
+            </div>
+
+            <div class="info-box">
+              <div><b>Nº de socio:</b> {p.get('socio','')}</div>
+              <div style="margin-top:7px"><b>Saldo disponible:</b> {m.get('saldo',0)} invitación{'es' if int(m.get('saldo',0)) != 1 else ''}</div>
+            </div>
+
+            <p style="font-size:17px"><b>¿Autorizás este ingreso?</b></p>
+
+            <form method="post" action="/a/{token}/approve">
+              <button class="btn btn-green action-btn">✓ ACEPTAR</button>
+            </form>
+            <div style="height:12px"></div>
+            <form method="post" action="/a/{token}/reject">
+              <button class="btn btn-red action-btn">✕ RECHAZAR</button>
+            </form>
+
+            <p class="muted" style="margin-top:18px">
+              Esta solicitud vence en 30 minutos y solo puede responderse una vez.
+            </p>
+          </div>
         </div>"""
     return page("Autorizar ingreso", body)
 
