@@ -192,6 +192,11 @@ def member_match_key(payload):
 
 
 def parse_excel_members(file_storage):
+    """
+    Lee A:H de forma secuencial. Esto evita accesos celda-por-celda en
+    openpyxl read_only, que en plan Free de Render podían tardar más de
+    40 segundos y provocar Internal Server Error.
+    """
     raw = file_storage.read()
     if not raw:
         raise ValueError("El archivo está vacío.")
@@ -201,24 +206,35 @@ def parse_excel_members(file_storage):
         raise ValueError("No se pudo abrir el Excel. Usá un archivo .xlsx válido.") from e
 
     ws = wb[wb.sheetnames[0]]
-    header_row = None
-    for r in range(1, min(ws.max_row, 25) + 1):
-        c4 = clean_excel_text(ws.cell(r, 4).value).lower()
-        c7 = clean_excel_text(ws.cell(r, 7).value).lower()
+
+    # Leer A:H de una sola pasada es muchísimo más rápido que ws.cell(...)
+    all_rows = list(ws.iter_rows(min_col=1, max_col=8, values_only=True))
+
+    header_index = None
+    for i, vals in enumerate(all_rows[:25]):
+        c4 = clean_excel_text(vals[3] if len(vals) > 3 else "").lower()
+        c7 = clean_excel_text(vals[6] if len(vals) > 6 else "").lower()
         if ("apellido" in c4 or "nombre" in c4) and "invit" in c7:
-            header_row = r
+            header_index = i
             break
-    if header_row is None:
-        header_row = 4
+
+    if header_index is None:
+        header_index = 3  # fila 4, como respaldo
 
     rows = []
     seen = set()
-    for r in range(header_row + 1, ws.max_row + 1):
-        vals = [ws.cell(r, c).value for c in range(1, 9)]
+
+    for vals in all_rows[header_index + 1:]:
+        # iter_rows ya devuelve exactamente 8 columnas, pero lo dejamos robusto
+        vals = list(vals) + [None] * (8 - len(vals))
+
         nombre = clean_excel_text(vals[3])
         socio = clean_excel_text(vals[2])
+
+        # Ignorar filas vacías o sólo formateadas
         if not nombre and not socio:
             continue
+
         invitaciones = max(0, clean_excel_int(vals[6], 0))
         payload = {
             "excel_id": clean_excel_text(vals[0]),
@@ -230,18 +246,32 @@ def parse_excel_members(file_storage):
             "telefono_original": clean_excel_text(vals[7]),
             "telefono_wa": normalize_phone(vals[7]),
         }
+
         key = member_match_key(payload)
         if key in seen:
-            raise ValueError(f"Hay un Nº de socio duplicado en el Excel: {socio or nombre}")
+            raise ValueError(
+                f"Hay un Nº de socio duplicado en el Excel: {socio or nombre}"
+            )
         seen.add(key)
         rows.append((key, payload, invitaciones))
 
     if not rows:
         raise ValueError("No encontré titulares en las columnas A:H del Excel.")
+
     return rows
 
 
 def sync_excel_into_state(state, excel_rows):
+    """
+    El Excel es la fuente de datos maestros A:H.
+
+    La columna Invitaciones (G) se usa como una CARGA PENDIENTE:
+    - En un titular nuevo, el valor inicial se acredita al saldo.
+    - Cuando luego el Excel pasa a 0, el saldo existente NO se borra.
+    - Si más adelante pasa de 0 a un valor mayor que 0, ese valor se
+      suma una sola vez al saldo como una nueva compra/carga.
+    - Repetir una actualización con el mismo valor no duplica saldo.
+    """
     current = state.setdefault("members", {})
     by_key = {}
     for mid, m in current.items():
@@ -252,32 +282,67 @@ def sync_excel_into_state(state, excel_rows):
             continue
 
     active_ids = set()
-    added = updated = 0
-    for key, payload, new_initial in excel_rows:
+    added = updated = credited = 0
+    credited_qty = 0
+
+    for key, payload, excel_invitaciones in excel_rows:
         found = by_key.get(key)
+
         if found:
             mid, m, old_payload = found
-            old_initial = max(0, int(m.get("invitaciones_iniciales", 0)))
-            old_saldo = max(0, int(m.get("saldo", old_initial)))
-            used = max(0, old_initial - old_saldo)
-            # Si el Excel cambió el total de invitaciones, conserva las ya utilizadas.
-            new_saldo = max(0, new_initial - used)
+
+            # Actualiza SIEMPRE todos los datos maestros del Excel.
             m["payload"] = encrypt_payload(payload)
-            m["invitaciones_iniciales"] = new_initial
-            m["saldo"] = new_saldo
             m["activo"] = True
+
+            saldo = max(0, int(m.get("saldo", 0)))
+            total_cargadas = max(
+                0,
+                int(m.get("invitaciones_iniciales", saldo))
+            )
+
+            # Compatibilidad con el estado creado por la versión anterior:
+            # la primera vez no vuelve a acreditar lo que ya estaba cargado.
+            if "excel_invitaciones_last" not in m:
+                m["excel_invitaciones_last"] = excel_invitaciones
+            else:
+                last_excel = max(0, int(m.get("excel_invitaciones_last", 0)))
+
+                # Una nueva carga se reconoce únicamente en la transición 0 -> N.
+                if last_excel == 0 and excel_invitaciones > 0:
+                    saldo += excel_invitaciones
+                    total_cargadas += excel_invitaciones
+                    credited += 1
+                    credited_qty += excel_invitaciones
+                    state.setdefault("history", []).append({
+                        "at": now_iso(),
+                        "type": "excel_credit",
+                        "member_id": mid,
+                        "qty": excel_invitaciones,
+                        "saldo": saldo,
+                    })
+
+                # Guardamos el valor visto para evitar acreditarlo dos veces.
+                m["excel_invitaciones_last"] = excel_invitaciones
+
+            m["saldo"] = saldo
+            m["invitaciones_iniciales"] = total_cargadas
             updated += 1
+
         else:
             mid = secrets.token_urlsafe(12)
             while mid in current:
                 mid = secrets.token_urlsafe(12)
+
             current[mid] = {
                 "payload": encrypt_payload(payload),
-                "saldo": new_initial,
-                "invitaciones_iniciales": new_initial,
+                "saldo": excel_invitaciones,
+                "invitaciones_iniciales": excel_invitaciones,
+                "excel_invitaciones_last": excel_invitaciones,
                 "activo": True,
             }
             added += 1
+
         active_ids.add(mid)
 
     deactivated = 0
@@ -292,13 +357,18 @@ def sync_excel_into_state(state, excel_rows):
         "rows": len(excel_rows),
         "added": added,
         "updated": updated,
+        "credited_members": credited,
+        "credited_qty": credited_qty,
         "deactivated": deactivated,
     })
     state["history"] = state["history"][-500:]
+
     return {
         "rows": len(excel_rows),
         "added": added,
         "updated": updated,
+        "credited_members": credited,
+        "credited_qty": credited_qty,
         "deactivated": deactivated,
     }
 
@@ -436,7 +506,7 @@ def admin_home():
         </div>
         <div class="card">
           <h3>Actualizar desde Excel</h3>
-          <p class="muted">Elegí tu archivo <b>temporada 2026-27.xlsx</b>. Se leen solamente las columnas A:H. Los ingresos ya utilizados se conservan.</p>
+          <p class="muted">Elegí tu archivo <b>temporada 2026-27.xlsx</b>. Se actualizan todas las filas y campos A:H. La columna Invitaciones funciona como carga pendiente: ponerla en 0 no borra el saldo; una nueva cantidad después de 0 se suma al voucher.</p>
           <form method="post" action="/admin/upload-excel" enctype="multipart/form-data">
             <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
               <div style="flex:1;min-width:260px"><label>Archivo Excel</label><input type="file" name="excel" accept=".xlsx,.xlsm" required></div>
@@ -474,9 +544,10 @@ def upload_excel():
         body = f"""
         <div class="card center" style="max-width:650px;margin:30px auto">
           <div class="status ok">EXCEL ACTUALIZADO</div>
-          <p><b>{result['rows']}</b> titulares leídos de A:H.</p>
+          <p><b>{result['rows']}</b> titulares actualizados desde A:H.</p>
           <p>Nuevos: <b>{result['added']}</b> · Actualizados: <b>{result['updated']}</b> · Ya no presentes: <b>{result['deactivated']}</b></p>
-          <div class="notice">Los vouchers ya utilizados se conservaron al recalcular los saldos.</div>
+          <p>Nuevas invitaciones acreditadas: <b>{result['credited_qty']}</b> en <b>{result['credited_members']}</b> titular(es).</p>
+          <div class="notice">La columna Invitaciones no reemplaza el saldo: al ponerla en 0 el voucher conserva lo que tenga. Cuando después cargás una nueva cantidad, se suma una sola vez.</div>
           <a class="btn btn-orange" href="/admin">Volver a recepción</a>
         </div>"""
         return page("Excel actualizado", body)
@@ -515,7 +586,7 @@ def voucher(mid):
         <div><div class="muted">Titular</div><div class="big">{p.get('nombre','')}</div>
           <p><b>Nº socio:</b> {p.get('socio','')}<br><b>Categoría:</b> {p.get('categoria','')}<br>{phone_note}</p></div>
         <div class="center"><div class="muted">Saldo disponible</div><div class="big">{saldo}</div>
-          <span class="saldo">de {m.get('invitaciones_iniciales',0)} invitaciones</span></div>
+          <span class="saldo">Total cargadas: {m.get('invitaciones_iniciales',0)}</span></div>
       </div>
       <hr style="border:0;border-top:1px solid #ddd;margin:20px 0">
       {form}
