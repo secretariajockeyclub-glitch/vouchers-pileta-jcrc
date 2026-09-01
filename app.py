@@ -12,6 +12,7 @@ from urllib.parse import quote
 
 import qrcode
 import requests
+from openpyxl import load_workbook
 from cryptography.fernet import Fernet, InvalidToken
 from flask import (
     Flask, request, redirect, url_for, session, render_template_string,
@@ -19,6 +20,7 @@ from flask import (
 )
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024
 
 ADMIN_PIN = os.environ.get("ADMIN_PIN", "")
 DATA_KEY = os.environ.get("JCRC_MASTER_KEY", "")
@@ -154,6 +156,153 @@ def normalize_phone(value):
     return ""
 
 
+
+def clean_excel_text(value):
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def clean_excel_int(value, default=0):
+    if value is None or value == "":
+        return default
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def clean_excel_date(value):
+    if value is None:
+        return ""
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y-%m-%d")
+    return clean_excel_text(value)
+
+
+def member_match_key(payload):
+    socio = clean_excel_text(payload.get("socio", "")).lower()
+    if socio:
+        return "socio:" + socio
+    nombre = " ".join(clean_excel_text(payload.get("nombre", "")).lower().split())
+    excel_id = clean_excel_text(payload.get("excel_id", ""))
+    return f"fallback:{excel_id}:{nombre}"
+
+
+def parse_excel_members(file_storage):
+    raw = file_storage.read()
+    if not raw:
+        raise ValueError("El archivo está vacío.")
+    try:
+        wb = load_workbook(io.BytesIO(raw), data_only=True, read_only=True)
+    except Exception as e:
+        raise ValueError("No se pudo abrir el Excel. Usá un archivo .xlsx válido.") from e
+
+    ws = wb[wb.sheetnames[0]]
+    header_row = None
+    for r in range(1, min(ws.max_row, 25) + 1):
+        c4 = clean_excel_text(ws.cell(r, 4).value).lower()
+        c7 = clean_excel_text(ws.cell(r, 7).value).lower()
+        if ("apellido" in c4 or "nombre" in c4) and "invit" in c7:
+            header_row = r
+            break
+    if header_row is None:
+        header_row = 4
+
+    rows = []
+    seen = set()
+    for r in range(header_row + 1, ws.max_row + 1):
+        vals = [ws.cell(r, c).value for c in range(1, 9)]
+        nombre = clean_excel_text(vals[3])
+        socio = clean_excel_text(vals[2])
+        if not nombre and not socio:
+            continue
+        invitaciones = max(0, clean_excel_int(vals[6], 0))
+        payload = {
+            "excel_id": clean_excel_text(vals[0]),
+            "fecha": clean_excel_date(vals[1]),
+            "socio": socio,
+            "nombre": nombre,
+            "categoria": clean_excel_text(vals[4]),
+            "cantidad": max(0, clean_excel_int(vals[5], 0)),
+            "telefono_original": clean_excel_text(vals[7]),
+            "telefono_wa": normalize_phone(vals[7]),
+        }
+        key = member_match_key(payload)
+        if key in seen:
+            raise ValueError(f"Hay un Nº de socio duplicado en el Excel: {socio or nombre}")
+        seen.add(key)
+        rows.append((key, payload, invitaciones))
+
+    if not rows:
+        raise ValueError("No encontré titulares en las columnas A:H del Excel.")
+    return rows
+
+
+def sync_excel_into_state(state, excel_rows):
+    current = state.setdefault("members", {})
+    by_key = {}
+    for mid, m in current.items():
+        try:
+            p = decrypt_member(m)
+            by_key[member_match_key(p)] = (mid, m, p)
+        except Exception:
+            continue
+
+    active_ids = set()
+    added = updated = 0
+    for key, payload, new_initial in excel_rows:
+        found = by_key.get(key)
+        if found:
+            mid, m, old_payload = found
+            old_initial = max(0, int(m.get("invitaciones_iniciales", 0)))
+            old_saldo = max(0, int(m.get("saldo", old_initial)))
+            used = max(0, old_initial - old_saldo)
+            # Si el Excel cambió el total de invitaciones, conserva las ya utilizadas.
+            new_saldo = max(0, new_initial - used)
+            m["payload"] = encrypt_payload(payload)
+            m["invitaciones_iniciales"] = new_initial
+            m["saldo"] = new_saldo
+            m["activo"] = True
+            updated += 1
+        else:
+            mid = secrets.token_urlsafe(12)
+            while mid in current:
+                mid = secrets.token_urlsafe(12)
+            current[mid] = {
+                "payload": encrypt_payload(payload),
+                "saldo": new_initial,
+                "invitaciones_iniciales": new_initial,
+                "activo": True,
+            }
+            added += 1
+        active_ids.add(mid)
+
+    deactivated = 0
+    for mid, m in current.items():
+        if mid not in active_ids and m.get("activo", True):
+            m["activo"] = False
+            deactivated += 1
+
+    state.setdefault("history", []).append({
+        "at": now_iso(),
+        "type": "excel_sync",
+        "rows": len(excel_rows),
+        "added": added,
+        "updated": updated,
+        "deactivated": deactivated,
+    })
+    state["history"] = state["history"][-500:]
+    return {
+        "rows": len(excel_rows),
+        "added": added,
+        "updated": updated,
+        "deactivated": deactivated,
+    }
+
+
 def public_base():
     return BASE_URL or request.url_root.rstrip("/")
 
@@ -285,6 +434,16 @@ def admin_home():
             <button class="btn btn-black">Buscar</button>
           </div></form>
         </div>
+        <div class="card">
+          <h3>Actualizar desde Excel</h3>
+          <p class="muted">Elegí tu archivo <b>temporada 2026-27.xlsx</b>. Se leen solamente las columnas A:H. Los ingresos ya utilizados se conservan.</p>
+          <form method="post" action="/admin/upload-excel" enctype="multipart/form-data">
+            <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+              <div style="flex:1;min-width:260px"><label>Archivo Excel</label><input type="file" name="excel" accept=".xlsx,.xlsm" required></div>
+              <button class="btn btn-orange">ACTUALIZAR EXCEL</button>
+            </div>
+          </form>
+        </div>
         <div class="card" style="overflow:auto">
           <table><thead><tr><th>Titular</th><th>Categoría</th><th>Saldo</th><th>Tel.</th><th>Acción</th></tr></thead>
           <tbody>{''.join(rows)}</tbody></table>
@@ -294,6 +453,35 @@ def admin_home():
         return page("Recepción", body)
     except Exception as e:
         return page("Error", f'<div class="card"><h2>Error</h2><p class="bad">{e}</p></div>'), 500
+
+
+
+@app.post("/admin/upload-excel")
+@admin_required
+def upload_excel():
+    f = request.files.get("excel")
+    if not f or not f.filename:
+        return page("Actualizar Excel", '<div class="card"><h2>Falta el archivo</h2><a class="btn btn-gray" href="/admin">Volver</a></div>'), 400
+    if not f.filename.lower().endswith((".xlsx", ".xlsm")):
+        return page("Actualizar Excel", '<div class="card"><h2>Formato no válido</h2><p>Elegí un archivo .xlsx.</p><a class="btn btn-gray" href="/admin">Volver</a></div>'), 400
+    try:
+        excel_rows = parse_excel_members(f)
+
+        def mutate(state):
+            return sync_excel_into_state(state, excel_rows)
+
+        result = update_state(mutate)
+        body = f"""
+        <div class="card center" style="max-width:650px;margin:30px auto">
+          <div class="status ok">EXCEL ACTUALIZADO</div>
+          <p><b>{result['rows']}</b> titulares leídos de A:H.</p>
+          <p>Nuevos: <b>{result['added']}</b> · Actualizados: <b>{result['updated']}</b> · Ya no presentes: <b>{result['deactivated']}</b></p>
+          <div class="notice">Los vouchers ya utilizados se conservaron al recalcular los saldos.</div>
+          <a class="btn btn-orange" href="/admin">Volver a recepción</a>
+        </div>"""
+        return page("Excel actualizado", body)
+    except Exception as e:
+        return page("Error al actualizar", f'<div class="card"><h2>No pude actualizar el Excel</h2><p class="bad">{e}</p><a class="btn btn-gray" href="/admin">Volver</a></div>'), 400
 
 
 @app.route("/v/<mid>", methods=["GET"])
