@@ -122,7 +122,7 @@
     },
     "_-_CJQrznb9ybIUS": {
       "payload": "gAAAAABqlv8QocWWfS0WHysizMlwkyiYhh-g94pnHiT5GqFI16JU4axPA5lA8h63Qfg2QkGg7jfpwZHOX3THNjAu93sLYxnPkeImjh7QJO-p6QoVjfzv3DbEYTTtlctgtt8-u7lvlSR6uc0Ts2SXLwW5hSKroj80aOdesN1ECnBHFw-RmiuYjIrE3T0Pi-KZ5VbdFiyUiLGwAXK1He5rcZk2LR0STJE_N4bnwRL9C7KtA_h_01wN75T5Q7wvMkNebO1JGvVgTk1ItetjBVGQ0RTUB3e98yGFV5XlL32ZZhGcMJrpHsW3NxWeQmN7_8GnGwchAi_yL8Oz",
-      "saldo": 5,
+      "saldo": 0,
       "invitaciones_iniciales": 10,
       "excel_invitaciones_last": 10,
       "activo": true
@@ -147,9 +147,10 @@
     "jxJ9_3D8Ctqdhf29ZbLIjfYDlslmLuAc": {
       "member_id": "_-_CJQrznb9ybIUS",
       "qty": 5,
-      "status": "pending",
+      "status": "approved",
       "created_at": "2026-09-01T16:40:59.720779+00:00",
-      "created_ts": 1788280859
+      "created_ts": 1788280859,
+      "resolved_at": "2026-09-01T16:41:54.891693+00:00"
     }
   },
   "history": [
@@ -199,6 +200,13 @@
       "credited_members": 0,
       "credited_qty": 0,
       "deactivated": 0
+    },
+    {
+      "at": "2026-09-01T16:41:54.891715+00:00",
+      "type": "approved",
+      "member_id": "_-_CJQrznb9ybIUS",
+      "qty": 5,
+      "saldo": 0
     }
   ]
 }
