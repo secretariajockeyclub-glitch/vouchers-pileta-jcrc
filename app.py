@@ -444,12 +444,102 @@ table{width:100%;border-collapse:collapse;background:white} th,td{padding:10px;b
 th{background:#171717;color:#fff;position:sticky;top:0}.ok{color:var(--green);font-weight:800}.bad{color:var(--red);font-weight:800}
 .notice{padding:12px;border-radius:9px;background:#fff3e9;border-left:5px solid var(--orange);margin:12px 0}
 .center{text-align:center}.status{font-size:38px;font-weight:900}.status.ok{color:var(--green)}
-.jcrc-panel{max-width:620px;margin:28px auto;background:#fff;border-radius:22px;overflow:hidden;box-shadow:0 12px 35px rgba(0,0,0,.14);border:1px solid #eee}
-.jcrc-head{background:#171717;color:#fff;padding:24px 22px;text-align:center;border-bottom:8px solid var(--orange)}
-.jcrc-mark{width:72px;height:72px;border-radius:50%;background:var(--orange);color:#fff;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:23px;font-weight:900;border:5px solid #fff}
-.jcrc-body{padding:24px}.request-number{font-size:46px;font-weight:900;color:var(--orange);line-height:1}
-.info-box{background:#f7f7f7;border-radius:14px;padding:15px;margin:14px 0;text-align:left}
-.action-btn{width:100%;font-size:20px;padding:16px;border-radius:14px}
+.jcrc-panel{
+  max-width:590px;
+  margin:26px auto;
+  background:#fff;
+  border-radius:28px;
+  overflow:hidden;
+  box-shadow:0 18px 50px rgba(0,0,0,.16);
+  border:1px solid #eee;
+}
+
+.jcrc-head{
+  background:linear-gradient(135deg,#ff7900,#ff5c00);
+  color:#fff;
+  padding:30px 22px;
+  text-align:center;
+}
+
+.jcrc-mark{
+  width:92px;
+  height:92px;
+  border-radius:50%;
+  background:#fff;
+  color:#f47b20;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  margin:0 auto 16px;
+  font-size:24px;
+  font-weight:900;
+  border:6px solid rgba(255,255,255,.45);
+  box-shadow:0 7px 20px rgba(0,0,0,.20);
+}
+
+.jcrc-head h1{
+  font-size:32px;
+  margin-bottom:7px !important;
+}
+
+.jcrc-body{
+  padding:28px;
+  background:linear-gradient(#fff,#fffaf6);
+}
+
+.request-number{
+  font-size:70px;
+  font-weight:900;
+  color:#f47b20;
+  line-height:1;
+  margin:12px 0 5px;
+}
+
+.info-box{
+  background:#fff;
+  border-radius:18px;
+  padding:18px;
+  margin:20px 0;
+  text-align:left;
+  border:1px solid #eee;
+  box-shadow:0 4px 15px rgba(0,0,0,.06);
+  font-size:17px;
+  line-height:1.7;
+}
+
+.action-btn{
+  width:100%;
+  font-size:20px;
+  padding:17px;
+  border-radius:16px;
+  font-weight:900;
+  box-shadow:0 5px 14px rgba(0,0,0,.12);
+}
+
+.btn-green.action-btn{
+  background:linear-gradient(135deg,#ff7900,#ff5c00);
+  color:white;
+}
+
+.btn-red.action-btn{
+  background:white;
+  color:#c92d2d;
+  border:2px solid #e34b4b;
+}
+
+.share-card{
+  max-width:560px;
+  margin:30px auto;
+  text-align:center;
+}
+
+.share-card img{
+  width:min(300px,82vw);
+  height:auto;
+  border:10px solid #fff;
+  box-shadow:0 5px 20px rgba(0,0,0,.12);
+  border-radius:14px;
+}
 .share-card{max-width:560px;margin:30px auto;text-align:center}.share-card img{width:min(300px,82vw);height:auto;border:10px solid #fff;box-shadow:0 5px 20px rgba(0,0,0,.12);border-radius:14px}
 @media(max-width:700px){table{font-size:13px}.hide-mobile{display:none}.big{font-size:28px}}
 """
@@ -858,31 +948,66 @@ def authorize_page(token):
             <div>Jockey Club Río Cuarto</div>
           </div>
           <div class="jcrc-body center">
-            <p style="font-size:18px;margin-top:0">Hola <b>{p.get('nombre','')}</b></p>
-            <p>Recepción solicita tu autorización para el ingreso de:</p>
-            <div class="request-number">{req['qty']}</div>
-            <div style="font-size:18px;font-weight:800;margin-bottom:14px">
-              persona{'s' if req['qty'] != 1 else ''}
-            </div>
+            <div style="display:inline-block;background:white;border:1px solid #ddd;
+padding:9px 15px;border-radius:20px;box-shadow:0 3px 10px rgba(0,0,0,.08);
+font-weight:700;margin-bottom:18px">
+  🟢 Válido desde WhatsApp
+</div>
 
-            <div class="info-box">
-              <div><b>Nº de socio:</b> {p.get('socio','')}</div>
-              <div style="margin-top:7px"><b>Saldo disponible:</b> {m.get('saldo',0)} invitación{'es' if int(m.get('saldo',0)) != 1 else ''}</div>
-            </div>
+<p style="font-size:17px;margin:4px 0">
+  Recepción solicita autorización para el ingreso de:
+</p>
 
-            <p style="font-size:17px"><b>¿Autorizás este ingreso?</b></p>
+<div class="request-number">{req['qty']}</div>
 
-            <form method="post" action="/a/{token}/approve">
-              <button class="btn btn-green action-btn">✓ ACEPTAR</button>
-            </form>
-            <div style="height:12px"></div>
-            <form method="post" action="/a/{token}/reject">
-              <button class="btn btn-red action-btn">✕ RECHAZAR</button>
-            </form>
+<div style="font-size:19px;font-weight:900;margin-bottom:12px">
+  persona{'s' if req['qty'] != 1 else ''}
+</div>
 
-            <p class="muted" style="margin-top:18px">
-              Esta solicitud vence en 30 minutos y solo puede responderse una vez.
-            </p>
+<div style="color:#f47b20;font-weight:900;margin-bottom:20px">
+  ◷ Válido por 30 minutos
+</div>
+
+<div class="info-box">
+  <div style="padding:8px 0">
+    <span style="color:#777">Titular</span><br>
+    <b style="font-size:19px">{p.get('nombre','')}</b>
+  </div>
+
+  <hr style="border:0;border-top:1px solid #eee">
+
+  <div style="padding:8px 0">
+    <span style="color:#777">Nº de socio</span><br>
+    <b style="font-size:19px">{p.get('socio','')}</b>
+  </div>
+
+  <hr style="border:0;border-top:1px solid #eee">
+
+  <div style="padding:8px 0">
+    <span style="color:#777">Saldo disponible</span><br>
+    <b style="font-size:19px">
+      {m.get('saldo',0)} invitación{'es' if int(m.get('saldo',0)) != 1 else ''}
+    </b>
+  </div>
+</div>
+
+<p style="font-size:19px;font-weight:900">
+  ¿Autorizás este ingreso?
+</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+  <form method="post" action="/a/{token}/approve">
+    <button class="btn btn-green action-btn">✓ Aceptar</button>
+  </form>
+
+  <form method="post" action="/a/{token}/reject">
+    <button class="btn btn-red action-btn">✕ Rechazar</button>
+  </form>
+</div>
+
+<p class="muted" style="margin-top:18px">
+  Esta solicitud puede responderse una sola vez.
+</p>
           </div>
         </div>"""
     og_title = "Jockey Club Río Cuarto · Autorización de ingreso"
