@@ -886,19 +886,19 @@ def authorize_page(token):
           </div>
         </div>"""
     og_title = "Jockey Club Río Cuarto · Autorización de ingreso"
-og_desc = (
-    f"Solicitud para autorizar el ingreso de {req['qty']} "
-    f"persona{'s' if req['qty'] != 1 else ''}. Tocá para Aceptar o Rechazar."
-)
-
-head_extra = f"""
-<meta property="og:type" content="website">
-<meta property="og:title" content="{og_title}">
-<meta property="og:description" content="{og_desc}">
-<meta property="og:url" content="{request.url}">
-"""
-
-return page("Autorizar ingreso", body, head_extra=head_extra)
+    og_desc = (
+        f"Solicitud para autorizar el ingreso de {req['qty']} "
+        f"persona{'s' if req['qty'] != 1 else ''}. Tocá para Aceptar o Rechazar."
+    )
+    
+    head_extra = f"""
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{og_title}">
+    <meta property="og:description" content="{og_desc}">
+    <meta property="og:url" content="{request.url}">
+    """
+    
+    return page("Autorizar ingreso", body, head_extra=head_extra)
 
 
 @app.post("/a/<token>/approve")
