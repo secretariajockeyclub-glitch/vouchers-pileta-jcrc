@@ -455,7 +455,7 @@ th{background:#171717;color:#fff;position:sticky;top:0}.ok{color:var(--green);fo
 """
 
 
-def page(title, body, script=""):
+def page(title, body, script="", head_extra=""):
     nav = ""
     if is_admin():
         nav = """<a href="/admin">Inicio</a><a href="/admin/qrs">QR para imprimir</a><a href="/admin/history">Historial</a><a href="/logout">Salir</a>"""
@@ -463,10 +463,11 @@ def page(title, body, script=""):
         """<!doctype html><html lang="es"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
         <meta name="robots" content="noindex,nofollow">
+        {{head_extra|safe}}
         <title>{{title}}</title><style>{{css}}</style></head>
         <body><div class="top"><b>JCRC · Vouchers Pileta</b>{{nav|safe}}</div>
         <div class="wrap">{{body|safe}}</div>{{script|safe}}</body></html>""",
-        title=title, css=BASE_CSS, nav=nav, body=body, script=script
+        title=title, css=BASE_CSS, nav=nav, body=body, script=script, head_extra=head_extra
     )
 
 
@@ -778,14 +779,17 @@ def create_request(mid):
     p, saldo = update_state(mutate)
     auth_url = f"{public_base()}/a/{token}"
     msg = (
-        f"🟠 JOCKEY CLUB RÍO CUARTO\n"
-        f"Solicitud de autorización de ingreso\n\n"
-        f"Titular: {p.get('nombre','')}\n"
-        f"Nº socio: {p.get('socio','')}\n"
-        f"Personas que solicitan ingresar: {qty}\n"
-        f"Saldo disponible: {saldo}\n\n"
-        f"👉 Tocá acá para ACEPTAR o RECHAZAR:\n{auth_url}\n\n"
-        f"⏱️ La solicitud vence en 30 minutos."
+    f"🟠 *JOCKEY CLUB RÍO CUARTO*\n"
+    f"*Solicitud de autorización de ingreso*\n\n"
+    f"Titular: {p.get('nombre','')}\n"
+    f"Nº socio: {p.get('socio','')}\n"
+    f"Ingreso solicitado: {qty} persona{'s' if qty != 1 else ''}\n"
+    f"Saldo disponible: {saldo}\n\n"
+    f"👇 *ABRÍ LA TARJETA DE AUTORIZACIÓN*\n"
+    f"{auth_url}\n\n"
+    f"Ahí vas a ver dos botones grandes:\n"
+    f"✅ *Aceptar*   ❌ *Rechazar*\n\n"
+    f"⏱️ La solicitud vence en 30 minutos."
     )
     wa_url = f"https://wa.me/{p['telefono_wa']}?text={quote(msg)}"
     body = f"""
@@ -881,7 +885,20 @@ def authorize_page(token):
             </p>
           </div>
         </div>"""
-    return page("Autorizar ingreso", body)
+    og_title = "Jockey Club Río Cuarto · Autorización de ingreso"
+og_desc = (
+    f"Solicitud para autorizar el ingreso de {req['qty']} "
+    f"persona{'s' if req['qty'] != 1 else ''}. Tocá para Aceptar o Rechazar."
+)
+
+head_extra = f"""
+<meta property="og:type" content="website">
+<meta property="og:title" content="{og_title}">
+<meta property="og:description" content="{og_desc}">
+<meta property="og:url" content="{request.url}">
+"""
+
+return page("Autorizar ingreso", body, head_extra=head_extra)
 
 
 @app.post("/a/<token>/approve")
