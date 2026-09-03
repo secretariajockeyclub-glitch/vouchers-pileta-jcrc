@@ -753,7 +753,6 @@ box-shadow:0 7px 20px rgba(0,0,0,.20)">
 
 
 @app.get("/voucher/<mid>/<sig>/qr.png")
-@app.get("/voucher/<mid>/<sig>/qr.png")
 def public_voucher_qr(mid, sig):
     from PIL import Image
 
@@ -969,20 +968,57 @@ def authorize_page(token):
         status = "expired"
 
     if status == "approved":
-        body = f'<div class="jcrc-panel"><div class="jcrc-head"><img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
-style="width:105px;height:105px;object-fit:contain;border-radius:50%;
-background:white;padding:5px;margin:0 auto 16px;display:block;
-box-shadow:0 7px 20px rgba(0,0,0,.20)"><h1>Autorización</h1></div><div class="jcrc-body center"><div class="status ok">✓ AUTORIZADO</div><p style="font-size:18px">{req["qty"]} persona(s).</p><p>Recepción ya recibió tu respuesta.</p></div></div>'
-    elif status == "rejected":
-        body = '<div class="jcrc-panel"><div class="jcrc-head"><img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
-style="width:105px;height:105px;object-fit:contain;border-radius:50%;
-background:white;padding:5px;margin:0 auto 16px;display:block;
-box-shadow:0 7px 20px rgba(0,0,0,.20)"><h1>Autorización</h1></div><div class="jcrc-body center"><div class="status bad">✕ RECHAZADO</div><p style="font-size:18px">La solicitud fue rechazada.</p><p>Recepción ya recibió tu respuesta.</p></div></div>'
-    elif status == "expired":
-        body = '<div class="jcrc-panel"><div class="jcrc-head"><img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
-style="width:105px;height:105px;object-fit:contain;border-radius:50%;
-background:white;padding:5px;margin:0 auto 16px;display:block;
-box-shadow:0 7px 20px rgba(0,0,0,.20)"><h1>Autorización</h1></div><div class="jcrc-body center"><div class="status bad">VENCIDO</div><p>Pedí a recepción una nueva solicitud.</p></div></div>'
+    body = f"""
+    <div class="jcrc-panel">
+      <div class="jcrc-head">
+        <img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
+             style="width:105px;height:105px;object-fit:contain;border-radius:50%;
+             background:white;padding:5px;margin:0 auto 16px;display:block;
+             box-shadow:0 7px 20px rgba(0,0,0,.20)">
+        <h1>Autorización</h1>
+      </div>
+      <div class="jcrc-body center">
+        <div class="status ok">✓ AUTORIZADO</div>
+        <p style="font-size:18px">{req["qty"]} persona(s).</p>
+        <p>Recepción ya recibió tu respuesta.</p>
+      </div>
+    </div>
+    """
+
+elif status == "rejected":
+    body = """
+    <div class="jcrc-panel">
+      <div class="jcrc-head">
+        <img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
+             style="width:105px;height:105px;object-fit:contain;border-radius:50%;
+             background:white;padding:5px;margin:0 auto 16px;display:block;
+             box-shadow:0 7px 20px rgba(0,0,0,.20)">
+        <h1>Autorización</h1>
+      </div>
+      <div class="jcrc-body center">
+        <div class="status bad">✕ RECHAZADO</div>
+        <p>La solicitud fue rechazada.</p>
+        <p>Recepción ya recibió tu respuesta.</p>
+      </div>
+    </div>
+    """
+
+elif status == "expired":
+    body = """
+    <div class="jcrc-panel">
+      <div class="jcrc-head">
+        <img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
+             style="width:105px;height:105px;object-fit:contain;border-radius:50%;
+             background:white;padding:5px;margin:0 auto 16px;display:block;
+             box-shadow:0 7px 20px rgba(0,0,0,.20)">
+        <h1>Autorización</h1>
+      </div>
+      <div class="jcrc-body center">
+        <div class="status bad">VENCIDO</div>
+        <p>Pedí a recepción una nueva solicitud.</p>
+      </div>
+    </div>
+    """
     else:
         body = f"""
         <div class="jcrc-panel">
@@ -1122,8 +1158,6 @@ def reject(token):
 
 @app.get("/qr/<mid>.png")
 @admin_required
-@app.get("/qr/<mid>.png")
-@admin_required
 def qr_png(mid):
     from PIL import Image
 
@@ -1171,6 +1205,7 @@ def qr_png(mid):
         mimetype="image/png",
         as_attachment=request.args.get("download") == "1",
         download_name=f"voucher-{mid}.png"
+        )
 @app.get("/admin/qrs")
 @admin_required
 def print_qrs():
