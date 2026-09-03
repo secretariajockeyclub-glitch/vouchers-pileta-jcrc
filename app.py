@@ -953,162 +953,160 @@ def request_status(token):
 
 
 @app.route("/a/<token>", methods=["GET"])
+def @app.route("/a/<token>", methods=["GET"])
 def authorize_page(token):
     state, _ = load_state()
     req = state.get("requests", {}).get(token)
+
     if not req:
-        return page("Solicitud inexistente", '<div class="card center"><h2>Solicitud inexistente</h2></div>'), 404
+        return page(
+            "Solicitud inexistente",
+            '<div class="card center"><h2>Solicitud inexistente</h2></div>'
+        ), 404
+
     m = state.get("members", {}).get(req["member_id"])
     if not m:
         abort(404)
+
     p = decrypt_member(m)
     status = req.get("status", "pending")
-    expired = now_ts() - int(req.get("created_ts", 0)) > 1800
-    if status == "pending" and expired:
+
+    if status == "pending" and now_ts() - int(req.get("created_ts", 0)) > 1800:
         status = "expired"
 
+    logo = """
+    <img src="/jcrc_logo.png"
+         alt="Jockey Club Río Cuarto"
+         style="width:105px;height:105px;object-fit:contain;border-radius:50%;
+         background:white;padding:5px;margin:0 auto 16px;display:block;
+         box-shadow:0 7px 20px rgba(0,0,0,.20)">
+    """
+
     if status == "approved":
-    body = f"""
-    <div class="jcrc-panel">
-      <div class="jcrc-head">
-        <img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
-             style="width:105px;height:105px;object-fit:contain;border-radius:50%;
-             background:white;padding:5px;margin:0 auto 16px;display:block;
-             box-shadow:0 7px 20px rgba(0,0,0,.20)">
-        <h1>Autorización</h1>
-      </div>
-      <div class="jcrc-body center">
-        <div class="status ok">✓ AUTORIZADO</div>
-        <p style="font-size:18px">{req["qty"]} persona(s).</p>
-        <p>Recepción ya recibió tu respuesta.</p>
-      </div>
-    </div>
-    """
+        body = f"""
+        <div class="jcrc-panel">
+          <div class="jcrc-head">
+            {logo}
+            <h1>Autorización</h1>
+          </div>
+          <div class="jcrc-body center">
+            <div class="status ok">✓ AUTORIZADO</div>
+            <p style="font-size:18px">{req["qty"]} persona(s).</p>
+            <p>Recepción ya recibió tu respuesta.</p>
+          </div>
+        </div>
+        """
 
-elif status == "rejected":
-    body = """
-    <div class="jcrc-panel">
-      <div class="jcrc-head">
-        <img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
-             style="width:105px;height:105px;object-fit:contain;border-radius:50%;
-             background:white;padding:5px;margin:0 auto 16px;display:block;
-             box-shadow:0 7px 20px rgba(0,0,0,.20)">
-        <h1>Autorización</h1>
-      </div>
-      <div class="jcrc-body center">
-        <div class="status bad">✕ RECHAZADO</div>
-        <p>La solicitud fue rechazada.</p>
-        <p>Recepción ya recibió tu respuesta.</p>
-      </div>
-    </div>
-    """
+    elif status == "rejected":
+        body = f"""
+        <div class="jcrc-panel">
+          <div class="jcrc-head">
+            {logo}
+            <h1>Autorización</h1>
+          </div>
+          <div class="jcrc-body center">
+            <div class="status bad">✕ RECHAZADO</div>
+            <p>La solicitud fue rechazada.</p>
+            <p>Recepción ya recibió tu respuesta.</p>
+          </div>
+        </div>
+        """
 
-elif status == "expired":
-    body = """
-    <div class="jcrc-panel">
-      <div class="jcrc-head">
-        <img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
-             style="width:105px;height:105px;object-fit:contain;border-radius:50%;
-             background:white;padding:5px;margin:0 auto 16px;display:block;
-             box-shadow:0 7px 20px rgba(0,0,0,.20)">
-        <h1>Autorización</h1>
-      </div>
-      <div class="jcrc-body center">
-        <div class="status bad">VENCIDO</div>
-        <p>Pedí a recepción una nueva solicitud.</p>
-      </div>
-    </div>
-    """
+    elif status == "expired":
+        body = f"""
+        <div class="jcrc-panel">
+          <div class="jcrc-head">
+            {logo}
+            <h1>Autorización</h1>
+          </div>
+          <div class="jcrc-body center">
+            <div class="status bad">VENCIDO</div>
+            <p>Pedí a recepción una nueva solicitud.</p>
+          </div>
+        </div>
+        """
+
     else:
         body = f"""
         <div class="jcrc-panel">
           <div class="jcrc-head">
-           <img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
-style="width:105px;height:105px;object-fit:contain;border-radius:50%;
-background:white;padding:5px;margin:0 auto 16px;display:block;
-box-shadow:0 7px 20px rgba(0,0,0,.20)">
+            {logo}
             <h1 style="margin-bottom:5px">Autorización de ingreso</h1>
             <div>Jockey Club Río Cuarto</div>
           </div>
+
           <div class="jcrc-body center">
+
             <div style="display:inline-block;background:white;border:1px solid #ddd;
-padding:9px 15px;border-radius:20px;box-shadow:0 3px 10px rgba(0,0,0,.08);
-font-weight:700;margin-bottom:18px">
-  🟢 Válido desde WhatsApp
-</div>
+            padding:9px 15px;border-radius:20px;
+            box-shadow:0 3px 10px rgba(0,0,0,.08);
+            font-weight:700;margin-bottom:18px">
+              🟢 Válido desde WhatsApp
+            </div>
 
-<p style="font-size:17px;margin:4px 0">
-  Recepción solicita autorización para el ingreso de:
-</p>
+            <p style="font-size:17px">
+              Recepción solicita autorización para el ingreso de:
+            </p>
 
-<div class="request-number">{req['qty']}</div>
+            <div class="request-number">{req['qty']}</div>
 
-<div style="font-size:19px;font-weight:900;margin-bottom:12px">
-  persona{'s' if req['qty'] != 1 else ''}
-</div>
+            <div style="font-size:19px;font-weight:900;margin-bottom:12px">
+              persona{'s' if req['qty'] != 1 else ''}
+            </div>
 
-<div style="color:#f47b20;font-weight:900;margin-bottom:20px">
-  ◷ Válido por 30 minutos
-</div>
+            <div style="color:#f47b20;font-weight:900;margin-bottom:20px">
+              ◷ Válido por 30 minutos
+            </div>
 
-<div class="info-box">
-  <div style="padding:8px 0">
-    <span style="color:#777">Titular</span><br>
-    <b style="font-size:19px">{p.get('nombre','')}</b>
-  </div>
+            <div class="info-box">
+              <span style="color:#777">Titular</span><br>
+              <b style="font-size:19px">{p.get('nombre','')}</b>
 
-  <hr style="border:0;border-top:1px solid #eee">
+              <hr style="border:0;border-top:1px solid #eee">
 
-  <div style="padding:8px 0">
-    <span style="color:#777">Nº de socio</span><br>
-    <b style="font-size:19px">{p.get('socio','')}</b>
-  </div>
+              <span style="color:#777">Nº de socio</span><br>
+              <b style="font-size:19px">{p.get('socio','')}</b>
 
-  <hr style="border:0;border-top:1px solid #eee">
+              <hr style="border:0;border-top:1px solid #eee">
 
-  <div style="padding:8px 0">
-    <span style="color:#777">Saldo disponible</span><br>
-    <b style="font-size:19px">
-      {m.get('saldo',0)} invitación{'es' if int(m.get('saldo',0)) != 1 else ''}
-    </b>
-  </div>
-</div>
+              <span style="color:#777">Saldo disponible</span><br>
+              <b style="font-size:19px">
+                {m.get('saldo',0)} invitación{'es' if int(m.get('saldo',0)) != 1 else ''}
+              </b>
+            </div>
 
-<p style="font-size:19px;font-weight:900">
-  ¿Autorizás este ingreso?
-</p>
+            <p style="font-size:19px;font-weight:900">
+              ¿Autorizás este ingreso?
+            </p>
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-  <form method="post" action="/a/{token}/approve">
-    <button class="btn btn-green action-btn">✓ Aceptar</button>
-  </form>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <form method="post" action="/a/{token}/approve">
+                <button class="btn btn-green action-btn">✓ Aceptar</button>
+              </form>
 
-  <form method="post" action="/a/{token}/reject">
-    <button class="btn btn-red action-btn">✕ Rechazar</button>
-  </form>
-</div>
+              <form method="post" action="/a/{token}/reject">
+                <button class="btn btn-red action-btn">✕ Rechazar</button>
+              </form>
+            </div>
 
-<p class="muted" style="margin-top:18px">
-  Esta solicitud puede responderse una sola vez.
-</p>
           </div>
-        </div>"""
+        </div>
+        """
+
     og_title = "Jockey Club Río Cuarto · Autorización de ingreso"
     og_desc = (
         f"Solicitud para autorizar el ingreso de {req['qty']} "
         f"persona{'s' if req['qty'] != 1 else ''}. Tocá para Aceptar o Rechazar."
     )
-    
+
     head_extra = f"""
     <meta property="og:type" content="website">
     <meta property="og:title" content="{og_title}">
     <meta property="og:description" content="{og_desc}">
     <meta property="og:url" content="{request.url}">
     """
-    
+
     return page("Autorizar ingreso", body, head_extra=head_extra)
-
-
 @app.post("/a/<token>/approve")
 def approve(token):
     def mutate(state):
@@ -1186,7 +1184,6 @@ def qr_png(mid):
 
     qr_w, qr_h = img.size
     logo_size = int(qr_w * 0.18)
-
     logo.thumbnail((logo_size, logo_size))
 
     pos = (
@@ -1205,7 +1202,7 @@ def qr_png(mid):
         mimetype="image/png",
         as_attachment=request.args.get("download") == "1",
         download_name=f"voucher-{mid}.png"
-        )
+    )
 @app.get("/admin/qrs")
 @admin_required
 def print_qrs():
