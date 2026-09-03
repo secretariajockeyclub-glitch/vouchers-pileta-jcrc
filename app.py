@@ -559,7 +559,9 @@ def page(title, body, script="", head_extra=""):
         <div class="wrap">{{body|safe}}</div>{{script|safe}}</body></html>""",
         title=title, css=BASE_CSS, nav=nav, body=body, script=script, head_extra=head_extra
     )
-
+@app.get("/jcrc_logo.png")
+def jcrc_logo():
+    return send_file("jcrc_logo.png", mimetype="image/png")
 
 @app.get("/")
 def home():
@@ -729,7 +731,10 @@ def public_voucher(mid, sig):
     body = f"""
     <div class="jcrc-panel">
       <div class="jcrc-head">
-        <div class="jcrc-mark">JCRC</div>
+       <img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
+style="width:105px;height:105px;object-fit:contain;border-radius:50%;
+background:white;padding:5px;margin:0 auto 16px;display:block;
+box-shadow:0 7px 20px rgba(0,0,0,.20)">
         <h1 style="margin-bottom:4px">Voucher de invitaciones</h1>
         <div>Temporada 2026/27</div>
       </div>
@@ -934,11 +939,20 @@ def authorize_page(token):
         status = "expired"
 
     if status == "approved":
-        body = f'<div class="jcrc-panel"><div class="jcrc-head"><div class="jcrc-mark">JCRC</div><h1>Autorización</h1></div><div class="jcrc-body center"><div class="status ok">✓ AUTORIZADO</div><p style="font-size:18px">{req["qty"]} persona(s).</p><p>Recepción ya recibió tu respuesta.</p></div></div>'
+        body = f'<div class="jcrc-panel"><div class="jcrc-head"><img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
+style="width:105px;height:105px;object-fit:contain;border-radius:50%;
+background:white;padding:5px;margin:0 auto 16px;display:block;
+box-shadow:0 7px 20px rgba(0,0,0,.20)"><h1>Autorización</h1></div><div class="jcrc-body center"><div class="status ok">✓ AUTORIZADO</div><p style="font-size:18px">{req["qty"]} persona(s).</p><p>Recepción ya recibió tu respuesta.</p></div></div>'
     elif status == "rejected":
-        body = '<div class="jcrc-panel"><div class="jcrc-head"><div class="jcrc-mark">JCRC</div><h1>Autorización</h1></div><div class="jcrc-body center"><div class="status bad">✕ RECHAZADO</div><p style="font-size:18px">La solicitud fue rechazada.</p><p>Recepción ya recibió tu respuesta.</p></div></div>'
+        body = '<div class="jcrc-panel"><div class="jcrc-head"><img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
+style="width:105px;height:105px;object-fit:contain;border-radius:50%;
+background:white;padding:5px;margin:0 auto 16px;display:block;
+box-shadow:0 7px 20px rgba(0,0,0,.20)"><h1>Autorización</h1></div><div class="jcrc-body center"><div class="status bad">✕ RECHAZADO</div><p style="font-size:18px">La solicitud fue rechazada.</p><p>Recepción ya recibió tu respuesta.</p></div></div>'
     elif status == "expired":
-        body = '<div class="jcrc-panel"><div class="jcrc-head"><div class="jcrc-mark">JCRC</div><h1>Autorización</h1></div><div class="jcrc-body center"><div class="status bad">VENCIDO</div><p>Pedí a recepción una nueva solicitud.</p></div></div>'
+        body = '<div class="jcrc-panel"><div class="jcrc-head"><img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
+style="width:105px;height:105px;object-fit:contain;border-radius:50%;
+background:white;padding:5px;margin:0 auto 16px;display:block;
+box-shadow:0 7px 20px rgba(0,0,0,.20)"><h1>Autorización</h1></div><div class="jcrc-body center"><div class="status bad">VENCIDO</div><p>Pedí a recepción una nueva solicitud.</p></div></div>'
     else:
         body = f"""
         <div class="jcrc-panel">
@@ -1084,6 +1098,20 @@ def qr_png(mid):
     qr.add_data(url)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
+from PIL import Image
+
+img = img.convert("RGBA")
+logo = Image.open("jcrc_logo.png").convert("RGBA")
+
+qr_w, qr_h = img.size
+logo_size = int(qr_w * 0.18)
+
+logo.thumbnail((logo_size, logo_size))
+
+pos = (
+    (qr_w - logo.width) // 2,
+    (qr_h - logo.height) // 2
+)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
