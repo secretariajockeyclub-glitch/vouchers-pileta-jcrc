@@ -227,7 +227,7 @@
     },
     "YI-J8MZKYLce2nwm": {
       "payload": "gAAAAABqmXU201-REKg4PEGPDtEj7iXQCJ2RcYsc6uvX4OF9UZJ00TijVpi3egMx0-OAOrn5_fd0gS0ypZY-CYznN0eM_Fcy1Rz5-AwU2jfXXN8BMB7JgvduhPiKHkiZF523imXFL05bIq-HcAU-klbIGjsC6CSbivOkqsngeeOc4NnyZMGXnN3GRA6shprLNmNScajkUHAuKYzApRBgd-gNhznnFedYB29hbCjgpo3aqXSii9ym63SRYqmUjJC0qF6iEnC7HGRIr15wwPYtYRCLu43olHUw3gOHtc0Deaj5d_ake2lfp91Tw36GAsulZyW93sv1qHxyHkOraqOZINqrnm31UF-AJg==",
-      "saldo": 6,
+      "saldo": 3,
       "invitaciones_iniciales": 6,
       "excel_invitaciones_last": 6,
       "activo": true
@@ -306,9 +306,10 @@
     "IbsbUn1Or0vgJNCkStmHx_zluQCU-Mdu": {
       "member_id": "YI-J8MZKYLce2nwm",
       "qty": 3,
-      "status": "pending",
+      "status": "approved",
       "created_at": "2026-09-03T13:27:54.832079+00:00",
-      "created_ts": 1788442074
+      "created_ts": 1788442074,
+      "resolved_at": "2026-09-03T13:28:35.055222+00:00"
     }
   },
   "history": [
@@ -546,6 +547,13 @@
       "credited_members": 0,
       "credited_qty": 0,
       "deactivated": 0
+    },
+    {
+      "at": "2026-09-03T13:28:35.055237+00:00",
+      "type": "approved",
+      "member_id": "YI-J8MZKYLce2nwm",
+      "qty": 3,
+      "saldo": 3
     }
   ]
 }
