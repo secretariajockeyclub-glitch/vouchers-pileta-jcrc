@@ -953,7 +953,6 @@ def request_status(token):
 
 
 @app.route("/a/<token>", methods=["GET"])
-def @app.route("/a/<token>", methods=["GET"])
 def authorize_page(token):
     state, _ = load_state()
     req = state.get("requests", {}).get(token)
