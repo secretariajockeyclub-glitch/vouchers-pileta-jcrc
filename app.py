@@ -753,26 +753,56 @@ box-shadow:0 7px 20px rgba(0,0,0,.20)">
 
 
 @app.get("/voucher/<mid>/<sig>/qr.png")
+@app.get("/voucher/<mid>/<sig>/qr.png")
 def public_voucher_qr(mid, sig):
+    from PIL import Image
+
     if not valid_voucher_signature(mid, sig):
         abort(404)
+
     state, _ = load_state()
     if mid not in state.get("members", {}):
         abort(404)
 
-    # El QR abre la ficha de recepción; si el dispositivo no inició sesión,
-    # solicita el PIN de recepción antes de mostrarla.
     url = f"{public_base()}/v/{mid}"
-    qr = qrcode.QRCode(version=None, box_size=9, border=3)
+
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=9,
+        border=3
+    )
+
     qr.add_data(url)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
+
+    img = qr.make_image(
+        fill_color="black",
+        back_color="white"
+    ).convert("RGBA")
+
+    logo = Image.open("jcrc_logo.png").convert("RGBA")
+
+    qr_w, qr_h = img.size
+    logo_size = int(qr_w * 0.18)
+    logo.thumbnail((logo_size, logo_size))
+
+    pos = (
+        (qr_w - logo.width) // 2,
+        (qr_h - logo.height) // 2
+    )
+
+    img.alpha_composite(logo, pos)
+
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
-    return send_file(buf, mimetype="image/png", download_name=f"voucher-{mid}.png")
 
-
+    return send_file(
+        buf,
+        mimetype="image/png",
+        download_name=f"voucher-{mid}.png"
+    )
 @app.route("/v/<mid>", methods=["GET"])
 @admin_required
 def voucher(mid):
@@ -957,7 +987,10 @@ box-shadow:0 7px 20px rgba(0,0,0,.20)"><h1>Autorización</h1></div><div class="j
         body = f"""
         <div class="jcrc-panel">
           <div class="jcrc-head">
-            <div class="jcrc-mark">JCRC</div>
+           <img src="/jcrc_logo.png" alt="Jockey Club Río Cuarto"
+style="width:105px;height:105px;object-fit:contain;border-radius:50%;
+background:white;padding:5px;margin:0 auto 16px;display:block;
+box-shadow:0 7px 20px rgba(0,0,0,.20)">
             <h1 style="margin-bottom:5px">Autorización de ingreso</h1>
             <div>Jockey Club Río Cuarto</div>
           </div>
@@ -1089,39 +1122,55 @@ def reject(token):
 
 @app.get("/qr/<mid>.png")
 @admin_required
+@app.get("/qr/<mid>.png")
+@admin_required
 def qr_png(mid):
+    from PIL import Image
+
     state, _ = load_state()
     if mid not in state.get("members", {}):
         abort(404)
+
     url = f"{public_base()}/v/{mid}"
-    qr = qrcode.QRCode(version=None, box_size=9, border=3)
+
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=9,
+        border=3
+    )
+
     qr.add_data(url)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-from PIL import Image
 
-img = img.convert("RGBA")
-logo = Image.open("jcrc_logo.png").convert("RGBA")
+    img = qr.make_image(
+        fill_color="black",
+        back_color="white"
+    ).convert("RGBA")
 
-qr_w, qr_h = img.size
-logo_size = int(qr_w * 0.18)
+    logo = Image.open("jcrc_logo.png").convert("RGBA")
 
-logo.thumbnail((logo_size, logo_size))
+    qr_w, qr_h = img.size
+    logo_size = int(qr_w * 0.18)
 
-pos = (
-    (qr_w - logo.width) // 2,
-    (qr_h - logo.height) // 2
-)
+    logo.thumbnail((logo_size, logo_size))
+
+    pos = (
+        (qr_w - logo.width) // 2,
+        (qr_h - logo.height) // 2
+    )
+
+    img.alpha_composite(logo, pos)
+
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     buf.seek(0)
+
     return send_file(
-        buf, mimetype="image/png",
+        buf,
+        mimetype="image/png",
         as_attachment=request.args.get("download") == "1",
         download_name=f"voucher-{mid}.png"
-    )
-
-
 @app.get("/admin/qrs")
 @admin_required
 def print_qrs():
