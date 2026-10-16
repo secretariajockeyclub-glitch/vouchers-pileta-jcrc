@@ -9,7 +9,7 @@ import hashlib
 import hmac
 from datetime import datetime, timezone
 from functools import wraps
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import qrcode
 import requests
@@ -23,7 +23,7 @@ from flask import (
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 12 * 1024 * 1024
 
-ADMIN_PIN = os.environ.get("ADMIN_PIN", "")
+SOCIOS_URL = "https://ingreso-socios-carreras-locales.gptjcrc.chatgpt.site"
 DATA_KEY = os.environ.get("JCRC_MASTER_KEY", "")
 GITHUB_TOKEN = os.environ.get("GITHUB_DATA_TOKEN", "")
 app.secret_key = hashlib.sha256(DATA_KEY.encode("utf-8")).hexdigest() if DATA_KEY else "CHANGE-ME"
@@ -546,9 +546,9 @@ th{background:#171717;color:#fff;position:sticky;top:0}.ok{color:var(--green);fo
 
 
 def page(title, body, script="", head_extra=""):
-    nav = ""
+    nav = f'<a href="{SOCIOS_URL}/?seccion=pileta">← Volver a la app de socios</a>'
     if is_admin():
-        nav = """<a href="/admin">Inicio</a><a href="/admin/qrs">QR para imprimir</a><a href="/admin/history">Historial</a><a href="/logout">Salir</a>"""
+        nav += """<a href="/admin">Inicio</a><a href="/admin/qrs">QR para imprimir</a><a href="/admin/history">Historial</a><a href="/logout">Salir</a>"""
     return render_template_string(
         """<!doctype html><html lang="es"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -559,6 +559,12 @@ def page(title, body, script="", head_extra=""):
         <div class="wrap">{{body|safe}}</div>{{script|safe}}</body></html>""",
         title=title, css=BASE_CSS, nav=nav, body=body, script=script, head_extra=head_extra
     )
+@app.after_request
+def private_access_headers(response):
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
 @app.get("/jcrc_logo.png")
 def jcrc_logo():
     return send_file("jcrc_logo.png", mimetype="image/png")
@@ -570,35 +576,60 @@ def home():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    error = ""
-    if request.method == "POST":
-        pin = request.form.get("pin", "")
-        if ADMIN_PIN and secrets.compare_digest(pin, ADMIN_PIN):
+    return redirect(SOCIOS_URL + "/api/pileta/access")
+
+
+@app.get("/integration-status")
+def integration_status():
+    return jsonify({"version": 1})
+
+
+@app.get("/integracion")
+def socios_access():
+    token = request.args.get("token", "")
+    if len(token) != 72:
+        return page("Acceso vencido", '<div class="card"><h1>Volvé a abrir Pileta desde la app de socios.</h1></div>'), 400
+    try:
+        response = requests.post(
+            SOCIOS_URL + "/api/pileta/redeem",
+            json={"token": token}, timeout=20,
+        )
+        if response.status_code != 200:
+            raise ValueError("Acceso vencido")
+        claim = response.json()
+        if claim.get("role") == "admin":
+            next_url = urlsplit(session.get("next", "/admin"))
+            next_path = next_url.path if next_url.path.startswith(("/v/", "/admin", "/qr/")) else "/admin"
             session.clear()
             session["admin"] = True
             session.permanent = True
-            nxt = request.form.get("next") or "/admin"
-            return redirect(nxt if nxt.startswith("/") or nxt.startswith(public_base()) else "/admin")
-        error = '<div class="notice bad">PIN incorrecto.</div>'
-    nxt = session.get("next", "/admin")
-    body = f"""
-    <div class="card" style="max-width:430px;margin:50px auto">
-      <h1>Ingreso recepción</h1>
-      <p class="muted">Sistema de vouchers · Temporada 2026/27</p>
-      {error}
-      <form method="post">
-        <input type="hidden" name="next" value="{nxt}">
-        <label>PIN de recepción</label><input type="password" name="pin" inputmode="numeric" autofocus required>
-        <br><br><button class="btn btn-orange" style="width:100%">Ingresar</button>
-      </form>
-    </div>"""
-    return page("Ingreso", body)
+            result = redirect(next_path)
+        elif claim.get("role") == "member" and claim.get("member_number"):
+            state, _ = load_state()
+            number = str(claim["member_number"]).strip()
+            matches = []
+            for mid, member in state.get("members", {}).items():
+                if not member.get("activo", True):
+                    continue
+                if str(decrypt_member(member).get("socio", "")).strip() == number:
+                    matches.append(mid)
+            if len(matches) != 1:
+                return page("Mi voucher", '<div class="card"><h1>Mi voucher de pileta</h1><p>No se encontró un voucher único y activo para tu número de socio. Comunicate con Secretaría de Socios.</p></div>'), 404
+            session.clear()
+            result = redirect(voucher_share_url(matches[0]))
+        else:
+            raise ValueError("Acceso inválido")
+        result.headers["Cache-Control"] = "no-store"
+        result.headers["Referrer-Policy"] = "no-referrer"
+        return result
+    except Exception:
+        return page("No se pudo ingresar", '<div class="card"><h1>No se pudo ingresar</h1><p>Volvé a la app de socios y abrí Pileta nuevamente. El acceso es válido por dos minutos y se usa una sola vez.</p></div>'), 503
 
 
 @app.get("/logout")
 def logout():
     session.clear()
-    return redirect("/login")
+    return redirect(SOCIOS_URL + "/?seccion=pileta")
 
 
 @app.get("/admin")
@@ -1284,3 +1315,4 @@ def receive_webhook():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
