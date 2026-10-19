@@ -428,7 +428,7 @@ def admin_required(fn):
 BASE_CSS = """
 :root{--orange:#f47b20;--black:#171717;--soft:#f4f4f4;--green:#198754;--red:#b42318}
 *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f5f5f5;color:#171717}
-.top{background:#171717;color:white;padding:14px 18px;border-bottom:5px solid #f47b20}
+.top{position:sticky;top:0;z-index:20;background:#171717;color:white;padding:14px 18px;border-bottom:5px solid #f47b20}
 .top b{font-size:20px}.top a{color:white;margin-left:18px;text-decoration:none}
 .wrap{max-width:1050px;margin:22px auto;padding:0 14px}
 .card{background:white;border-radius:14px;padding:20px;box-shadow:0 2px 12px rgba(0,0,0,.08);margin-bottom:16px}
@@ -541,12 +541,13 @@ th{background:#171717;color:#fff;position:sticky;top:0}.ok{color:var(--green);fo
   border-radius:14px;
 }
 .share-card{max-width:560px;margin:30px auto;text-align:center}.share-card img{width:min(300px,82vw);height:auto;border:10px solid #fff;box-shadow:0 5px 20px rgba(0,0,0,.12);border-radius:14px}
-@media(max-width:700px){table{font-size:13px}.hide-mobile{display:none}.big{font-size:28px}}
+.top .menu-home{display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:56px;margin:12px 0 8px;padding:12px 20px;border:2px solid white;border-radius:12px;background:#f47b20;color:#111;font-size:18px;font-weight:900;box-shadow:0 3px 0 #fff;text-decoration:none}.menu-home svg{width:28px;height:28px;flex:none}.menu-home:focus-visible{outline:3px solid #70c5ff;outline-offset:4px}.header-nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px}.top .header-nav>a:not(.menu-home){margin-left:0;padding:10px 4px}.top>b{display:block}.send-help{line-height:1.6}.send-help ol{padding-left:22px}
+@media(max-width:700px){.top .menu-home{width:100%}.header-nav{gap:4px 14px}table{font-size:13px}.hide-mobile{display:none}.big{font-size:28px}}
 """
 
 
 def page(title, body, script="", head_extra=""):
-    nav = f'<a href="{SOCIOS_URL}/?seccion=pileta">← Volver a la app de socios</a>'
+    nav = f'''<a class="menu-home" href="{SOCIOS_URL}/?seccion=pileta" target="_top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 10 12 3l9 7v11h-6v-7H9v7H3Z"/></svg><span>Volver al menú</span></a>'''
     if is_admin():
         nav += """<a href="/admin">Inicio</a><a href="/admin/qrs">QR para imprimir</a><a href="/admin/history">Historial</a><a href="/logout">Salir</a>"""
     return render_template_string(
@@ -555,7 +556,7 @@ def page(title, body, script="", head_extra=""):
         <meta name="robots" content="noindex,nofollow">
         {{head_extra|safe}}
         <title>{{title}}</title><style>{{css}}</style></head>
-        <body><div class="top"><b>JCRC · Vouchers Pileta</b>{{nav|safe}}</div>
+        <body><div class="top"><b>JCRC · Vouchers Pileta</b><nav class="header-nav" aria-label="Menú principal">{{nav|safe}}</nav></div>
         <div class="wrap">{{body|safe}}</div>{{script|safe}}</body></html>""",
         title=title, css=BASE_CSS, nav=nav, body=body, script=script, head_extra=head_extra
     )
@@ -564,6 +565,10 @@ def private_access_headers(response):
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Cache-Control"] = "no-store"
     return response
+
+@app.errorhandler(requests.exceptions.RequestException)
+def data_connection_error(error):
+    return page("Vouchers temporalmente no disponibles", '<div class="card"><h1>No se pudo cargar el voucher</h1><p>Hay un problema de conexión con los datos. Intentá nuevamente más tarde o comunicate con Secretaría de Socios.</p></div>'), 503
 
 @app.get("/jcrc_logo.png")
 def jcrc_logo():
@@ -576,12 +581,19 @@ def home():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    return redirect(SOCIOS_URL + "/api/pileta/access")
+    return redirect(SOCIOS_URL + "/pileta/administracion")
 
 
 @app.get("/integration-status")
 def integration_status():
-    return jsonify({"version": 1})
+    try:
+        load_state()
+        return jsonify({"version": 1, "ready": True})
+    except requests.exceptions.HTTPError as error:
+        status = error.response.status_code if error.response is not None else 0
+        return jsonify({"version": 1, "ready": False, "reason": "storage_auth" if status in (401, 403) else "storage_unavailable"}), 503
+    except Exception:
+        return jsonify({"version": 1, "ready": False, "reason": "storage_unavailable"}), 503
 
 
 @app.get("/integracion")
@@ -660,11 +672,12 @@ def admin_home():
                 <td>{phone_html}</td>
                 <td><a class="btn btn-orange" href="/v/{mid}">Abrir</a>
                     <a class="btn btn-gray" href="/qr/{mid}.png?download=1">QR</a>
-                    {f'<a class="btn btn-green" href="/admin/send-voucher/{mid}" target="_blank" rel="noopener">Enviar</a>' if phone else '<span class="muted">Sin tel.</span>'}</td>
+                    {f'<a class="btn btn-green" href="/admin/send-voucher/{mid}" target="_blank" rel="noopener">Enviar por WhatsApp</a>' if phone else '<span class="muted">Sin tel.</span>'}</td>
               </tr>""")
         body = f"""
         <div class="card">
           <h1>Recepción · Vouchers</h1>
+          <div class="notice send-help"><b>Enviar un voucher por WhatsApp</b><ol><li>Buscá al titular y verificá su teléfono y saldo.</li><li>Tocá «Enviar por WhatsApp» en su fila.</li><li>Revisá el destinatario y el mensaje en WhatsApp; luego presioná Enviar.</li></ol><p>Primero probá con un voucher de prueba antes de iniciar los envíos a socios.</p></div>
           <form method="get"><div style="display:flex;gap:8px">
             <input name="q" value="{request.args.get('q','')}" placeholder="Buscar por titular o Nº de socio">
             <button class="btn btn-black">Buscar</button>
@@ -688,7 +701,7 @@ def admin_home():
             body = '<div class="notice bad">Falta GITHUB_DATA_TOKEN: los cambios no serán persistentes.</div>' + body
         return page("Recepción", body)
     except Exception as e:
-        return page("Error", f'<div class="card"><h2>Error</h2><p class="bad">{e}</p></div>'), 500
+        return page("No se pudieron cargar los vouchers", '<div class="card"><h1>No se pudieron cargar los vouchers</h1><p>La conexión con los datos necesita revisión de Administración. No se modificaron saldos.</p><a class="btn btn-orange" href="/admin">Reintentar</a></div>'), 503
 
 
 
