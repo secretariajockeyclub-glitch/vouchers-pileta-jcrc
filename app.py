@@ -570,6 +570,35 @@ def private_access_headers(response):
 def data_connection_error(error):
     return page("Vouchers temporalmente no disponibles", '<div class="card"><h1>No se pudo cargar el voucher</h1><p>Hay un problema de conexión con los datos. Intentá nuevamente más tarde o comunicate con Secretaría de Socios.</p></div>'), 503
 
+# One-time authenticated transfer. The encryption key never leaves Render.
+@app.post("/migration/export")
+def migration_export():
+    body = request.get_json(silent=True) or {}
+    token = body.get("token", "")
+    if not isinstance(token, str) or len(token) != 72:
+        return jsonify({"error": "Acceso restringido"}), 403
+    try:
+        claim_response = requests.post(
+            SOCIOS_URL + "/api/pileta/redeem",
+            json={"token": token}, timeout=20,
+        )
+        if claim_response.status_code != 200 or claim_response.json().get("role") != "migration":
+            return jsonify({"error": "Acceso restringido"}), 403
+        state = body.get("state", {})
+        members = state.get("members", {})
+        if not isinstance(members, dict) or not 1 <= len(members) <= 5000:
+            return jsonify({"error": "Respaldo inválido"}), 400
+        result = {}
+        for mid, member in members.items():
+            result[mid] = {
+                "person": decrypt_member(member),
+                "signature": voucher_share_signature(mid),
+            }
+        return jsonify({"members": result})
+    except Exception:
+        return jsonify({"error": "No se pudo verificar el respaldo. Los datos originales se conservaron."}), 503
+
+
 @app.get("/jcrc_logo.png")
 def jcrc_logo():
     return send_file("jcrc_logo.png", mimetype="image/png")
